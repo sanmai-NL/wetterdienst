@@ -4,6 +4,8 @@ Changelog
 Development
 ***********
 
+- Radar: read bufr data into pandas.DataFrame when eccodes library is provided
+
 0.56.2 (11.05.2023)
 *******************
 

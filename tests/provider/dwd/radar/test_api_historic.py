@@ -11,6 +11,7 @@ import pytz
 import requests
 from dirty_equals import IsDatetime, IsDict, IsInt, IsList, IsNumeric, IsStr
 
+from wetterdienst.eccodes import ensure_eccodes
 from wetterdienst.provider.dwd.radar import (
     DwdRadarDataFormat,
     DwdRadarDataSubset,
@@ -480,6 +481,24 @@ def test_radar_request_site_historic_pe_bufr(default_settings):
     decoder = pybufrkit.decoder.Decoder()
     decoder.process(payload, info_only=True)
 
+    if ensure_eccodes():
+        df = results[0].df
+
+        assert not df.empty
+
+        assert df.columns.tolist() == [
+            "station_id",
+            "latitude",
+            "longitude",
+            "height",
+            "projectionType",
+            "pictureType",
+            "date",
+            "echotops",
+        ]
+
+        assert not df.dropna().empty
+
 
 @pytest.mark.xfail(reason="month_year not matching start_date")
 @pytest.mark.remote
@@ -532,6 +551,13 @@ def test_radar_request_site_historic_pe_timerange(fmt, default_settings):
             "CO0CD0CS0ET 5.0FL9999MS"
         )
         assert re.match(bytes(header, encoding="ascii"), payload[:115])
+
+    first = results[0]
+
+    if fmt == DwdRadarDataFormat.BUFR:
+        assert not first.df.dropna().empty
+
+        assert first.df.columns == [""]
 
 
 @pytest.mark.remote
@@ -600,6 +626,10 @@ def test_radar_request_site_historic_px250_bufr_timerange(default_settings):
         raise pytest.skip("Data currently not available")
 
     assert len(results) == 12
+
+    first = results[0]
+
+    assert not first.df.dropna().empty
 
 
 @pytest.mark.remote

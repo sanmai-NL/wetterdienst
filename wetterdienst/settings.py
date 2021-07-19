@@ -30,6 +30,7 @@ class Settings:
     _defaults = {
         "cache_disable": False,
         "cache_dir": platformdirs.user_cache_dir(appname="wetterdienst"),
+        "eccodes_dir": None,
         "fsspec_client_kwargs": {},
         "ts_humanize": True,
         "ts_shape": "long",
@@ -39,12 +40,14 @@ class Settings:
         "ts_skip_criteria": "min",
         "ts_dropna": False,
         "ts_interpolation_use_nearby_station_distance": 1,
+        "radar_read_bufr": False
     }
 
     def __init__(
         self,
         cache_disable: Optional[bool] = None,
         cache_dir: Optional[pathlib.Path] = None,
+        eccodes_dir: Optional[pathlib.Path] = None,
         fsspec_client_kwargs: Optional[dict] = None,
         ts_humanize: Optional[bool] = None,
         ts_shape: Optional[Literal["wide", "long"]] = None,
@@ -54,6 +57,7 @@ class Settings:
         ts_skip_criteria: Optional[Literal["min", "mean", "max"]] = None,
         ts_dropna: Optional[bool] = None,
         ts_interpolation_use_nearby_station_distance: Optional[Union[float, int]] = None,
+        radar_read_bufr: Optional[bool] = None,
         ignore_env: bool = False,
     ) -> None:
         _defaults = deepcopy(self._defaults)  # make sure mutable objects are not changed
@@ -65,6 +69,9 @@ class Settings:
             # cache
             self.cache_disable: bool = _da(cache_disable, env.bool("CACHE_DISABLE", None), _defaults["cache_disable"])
             self.cache_dir: pathlib.Path = _da(cache_dir, env.path("CACHE_DIR", None), _defaults["cache_dir"])
+            # eccodes
+            self.eccodes_dir: pathlib.Path = _da(eccodes_dir, env.path("ECCODES_DIR", None), _defaults["eccodes_dir"])
+
             # FSSPEC aiohttp client kwargs, may be used to pass extra arguments
             # such as proxies to aiohttp
             self.fsspec_client_kwargs: dict = _da(
@@ -88,7 +95,7 @@ class Settings:
                     env.str("SKIP_CRITERIA", None, validate=OneOf(["min", "mean", "max"])),
                     _defaults["ts_skip_criteria"],
                 )
-                self.ts_dropna: bool = _da(ts_dropna, env.bool("DROPNA", ts_dropna), _defaults["ts_dropna"])
+                self.ts_dropna: bool = _da(ts_dropna, env.bool("DROPNA", None), _defaults["ts_dropna"])
 
                 with env.prefixed("INTERPOLATION_"):
                     self.ts_interpolation_use_nearby_station_distance: float = _da(
@@ -96,6 +103,10 @@ class Settings:
                         env.float("USE_NEARBY_STATION_DISTANCE", None),
                         _defaults["ts_interpolation_use_nearby_station_distance"],
                     )
+
+            with env.prefixed("RADAR_"):
+                # radar related
+                self.read_bufr: bool = _da(radar_read_bufr, env.bool("READ_BUFR", None), _defaults["radar_read_bufr"])
 
         if self.cache_disable:
             log.info("Wetterdienst cache is disabled")
@@ -117,6 +128,7 @@ class Settings:
         return {
             "cache_disable": self.cache_disable,
             "cache_dir": self.cache_dir,
+            "eccodes_dir": self.eccodes_dir,
             "fsspec_client_kwargs": self.fsspec_client_kwargs,
             "ts_humanize": self.ts_humanize,
             "ts_shape": self.ts_shape,
@@ -126,6 +138,7 @@ class Settings:
             "ts_skip_criteria": self.ts_skip_criteria,
             "ts_dropna": self.ts_dropna,
             "ts_interpolation_use_nearby_station_distance": self.ts_interpolation_use_nearby_station_distance,
+            "radar_read_bufr": self.read_bufr
         }
 
     def reset(self) -> "Settings":

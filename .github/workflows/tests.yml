@@ -44,6 +44,12 @@ jobs:
           architecture: x64
           cache: poetry
 
+      - name: Install eccodes (Mac only)
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+               brew install eccodes && export WD_ECCODES_DIR=$(brew --prefix eccodes)
+          fi       
+
       - name: Install project
         run: .github/workflows/install.sh testing
 

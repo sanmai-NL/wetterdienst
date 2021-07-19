@@ -6,15 +6,19 @@ import gzip
 import logging
 import re
 import tarfile
-from dataclasses import dataclass
+import tempfile
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Generator, Optional, Union
 
 import pandas as pd
+import pdbufr as pdbufr
 from fsspec.implementations.tar import TarFileSystem
 
+from wetterdienst.eccodes import ensure_eccodes
 from wetterdienst.exceptions import FailedDownload
+from wetterdienst.metadata.columns import Columns
 from wetterdienst.metadata.extension import Extension
 from wetterdienst.metadata.period import Period
 from wetterdienst.metadata.resolution import Resolution
@@ -44,6 +48,15 @@ from wetterdienst.util.network import download_file
 
 log = logging.getLogger(__name__)
 
+BUFR_PARAMETER_MAPPING = {
+    DwdRadarParameter.PE_ECHO_TOP: ["echoTops"],
+    DwdRadarParameter.PG_REFLECTIVITY: ["horizontalReflectivity"],
+    DwdRadarParameter.LMAX_VOLUME_SCAN: ["horizontalReflectivity"],
+    DwdRadarParameter.PX250_REFLECTIVITY: ["horizontalReflectivity"],
+}
+
+ECCODES_FOUND = ensure_eccodes()
+
 
 @dataclass
 class RadarResult:
@@ -53,6 +66,8 @@ class RadarResult:
     """
 
     data: BytesIO
+    # placeholder for bufr files, which are read into pandas.DataFrame if eccodes available
+    df: pd.DataFrame = field(default_factory=pd.DataFrame)
     timestamp: datetime = None
     url: str = None
     filename: str = None
@@ -389,6 +404,59 @@ class DwdRadarValues:
                                 verify_hdf5(result.data)
                             except Exception as e:  # pragma: no cover
                                 log.exception(f"Unable to read HDF5 file. {e}")
+
+                        if self.format == DwdRadarDataFormat.BUFR:
+                            if ECCODES_FOUND and self.settings.read_bufr:
+                                buffer = result.data
+
+                                # TODO: pdbufr currently doesn't seem to allow reading directly from BytesIO
+                                tf = tempfile.NamedTemporaryFile("w+b")
+                                tf.write(buffer.read())
+                                tf.seek(0)
+
+                                df = pdbufr.read_bufr(
+                                    tf.name,
+                                    columns="data",
+                                    flat=True
+                                )
+
+                                value_vars = []
+                                parameters = BUFR_PARAMETER_MAPPING[self.parameter]
+                                for par in parameters:
+                                    value_vars.extend([col for col in df.columns if par in col])
+                                value_vars = set(value_vars)
+                                id_vars = df.columns.difference(value_vars)
+                                id_vars = [iv for iv in id_vars if iv.startswith("#1#")]
+
+                                df = df.melt(id_vars=id_vars,var_name="parameter",value_vars=value_vars, value_name="value")
+                                df.columns = [col[3:] if col.startswith("#1#") else col for col in df.columns]
+
+                                df = df.rename(
+                                    columns={
+                                        "stationNumber": Columns.STATION_ID.value,
+                                        "latitude": Columns.LATITUDE.value,
+                                        "longitude": Columns.LONGITUDE.value,
+                                        "heightOfStation": Columns.HEIGHT.value,
+                                    }
+                                )
+
+
+                                # df[Columns.STATION_ID.value] = df[Columns.STATION_ID.value].astype(int).astype(str)
+
+                                date_columns = ["year", "month", "day", "hour", "minute"]
+                                dates = df.loc[:, date_columns].apply(
+                                    lambda x: datetime(
+                                        year=x.year, month=x.month, day=x.day, hour=x.hour, minute=x.minute
+                                    ),
+                                    axis=1,
+                                )
+                                df.insert(len(df.columns) - 1, Columns.DATE.value, dates)
+                                df = df.drop(columns=date_columns)
+
+                                print(df)
+
+                                result.df = df
+
                         yield result
 
     @staticmethod
