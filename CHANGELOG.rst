@@ -4,7 +4,7 @@ Changelog
 Development
 ***********
 
-- Docker: Use Python 3.12
+- Docker: Use Python 3.12 in standard image
 
 0.72.0 (13.01.2024)
 *******************

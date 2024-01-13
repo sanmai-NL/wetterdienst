@@ -15,7 +15,7 @@ RUN \
       python-is-python3 python3-h5py python3-dev python3-pip python3-venv python3-wheel
 
 # Use Python 3.11.
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.12 0
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 0
 
 # Use venv to circumvent "externally managed environment" error
 # Source: https://pythonspeed.com/articles/activate-virtualenv-dockerfile/
